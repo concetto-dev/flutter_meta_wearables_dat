@@ -746,6 +746,19 @@ class VideoFrame {
 
 /// The main class for the Meta Wearables DAT.
 class MetaWearablesDat {
+  /// CONCETTO FORK (lazy configure): starts Meta's kit.
+  ///
+  /// Upstream starts the kit on iOS at plugin registration, which is every
+  /// launch of the host app on every phone. This fork starts it only here (or
+  /// at the first other method call, which configures first), so a host that
+  /// never calls the plugin never starts the kit. Call it once, and await it,
+  /// BEFORE listening to any of this class's streams: a stream's first
+  /// listener reaches the kit directly. Safe to call again; answers true once
+  /// the kit is started. On Android (already lazy) it answers true.
+  static Future<bool> configure() {
+    return MetaWearablesDatPlatform.instance.configure();
+  }
+
   /// Requests the Android runtime permissions required by the DAT SDK
   /// (Bluetooth, Internet). Returns true if all permissions are granted.
   /// No-op on iOS.

@@ -28,6 +28,11 @@ abstract class MetaWearablesDatPlatform extends PlatformInterface {
     _instance = instance;
   }
 
+  /// CONCETTO FORK: starts Meta's kit. See [MetaWearablesDat.configure].
+  Future<bool> configure() {
+    throw UnimplementedError('configure() has not been implemented.');
+  }
+
   Future<bool> requestAndroidPermissions() {
     throw UnimplementedError(
       'requestAndroidPermissions() has not been implemented.',

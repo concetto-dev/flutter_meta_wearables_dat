@@ -1,3 +1,8 @@
+## 1.0.1 (concetto fork: lazy configure)
+
+- iOS: Meta's kit is no longer started at plugin registration (every launch of the host app). It starts when the host calls the new `MetaWearablesDat.configure()`, or at the first other method call, which configures first. A host that never calls the plugin never starts the kit. Call `configure()` before listening to any of the plugin's streams.
+- Android: unchanged (it already initializes lazily); `configure()` answers true.
+
 ## 1.0.1
 
 - Upgrade Meta Wearables DAT to 1.0.1 on iOS and Android. Android includes upstream fixes for HEVC buffer corruption and stream lag/stutter; iOS has no developer-facing SDK changes. The known intermittent iOS locked-background session termination remains unresolved.

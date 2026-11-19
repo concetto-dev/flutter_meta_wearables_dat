@@ -253,6 +253,34 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
     instance.deviceStateHandler = deviceStateHandler
     deviceStateChannel.setStreamHandler(deviceStateHandler)
 
+    // CONCETTO FORK (lazy configure). Upstream started Meta's kit right here,
+    // at plugin registration, which is every launch of the host app on every
+    // phone, whether or not the person has glasses. Nothing of the kit is
+    // touched now until the host asks: `configure` on the method channel
+    // (Dart: `MetaWearablesDat.configure()`), or the first other call, which
+    // configures first. A host that never calls the plugin never starts it.
+    // The event channels above only reach the kit when Dart listens to them;
+    // a host must call `configure()` before it listens to any of them.
+  }
+
+  /// CONCETTO FORK: whether Meta's kit has been started in this process, and
+  /// the calls that arrived while it was starting.
+  private var kitConfigured = false
+  private var kitConfigureStarted = false
+  private var callsWaitingForKit: [() -> Void] = []
+
+  /// CONCETTO FORK: runs `run` once Meta's kit is started, starting it the
+  /// first time. The start is upstream's own block, moved here unchanged from
+  /// `register(with:)`. Always called on the main thread (the method channel's).
+  private func whenKitConfigured(_ run: @escaping () -> Void) {
+    if kitConfigured {
+      run()
+      return
+    }
+    callsWaitingForKit.append(run)
+    if kitConfigureStarted { return }
+    kitConfigureStarted = true
+    let instance = self
     Task { @MainActor in
       instance.lifecycleObserver.onDidEnterBackground = { [weak instance] in
         instance?.handleDidEnterBackground()
@@ -268,10 +296,31 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
       // devices that surface after a permission grant are actually observed.
       instance.startDeviceListMonitoring()
       instance.startDeviceAvailabilityMonitoring()
+
+      instance.kitConfigured = true
+      let waiting = instance.callsWaitingForKit
+      instance.callsWaitingForKit = []
+      for call in waiting { call() }
     }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    // CONCETTO FORK: `configure` starts the kit and answers true; any other
+    // call that needs the kit waits for it to be started first.
+    if call.method == "configure" {
+      whenKitConfigured { result(true) }
+      return
+    }
+    if !kitConfigured && call.method != "requestAndroidPermissions" {
+      whenKitConfigured { [weak self] in
+        guard let self = self else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self.handle(call, result: result)
+      }
+      return
+    }
     switch call.method {
       case "requestAndroidPermissions":
         // No-op on iOS — Android-only runtime permissions

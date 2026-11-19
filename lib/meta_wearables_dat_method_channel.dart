@@ -128,6 +128,16 @@ class MethodChannelMetaWearablesDat extends MetaWearablesDatPlatform {
       .receiveBroadcastStream()
       .map((dynamic event) => event as Uint8List);
 
+  /// CONCETTO FORK: iOS starts Meta's kit on this call and no longer at
+  /// plugin registration. Android initializes its kit lazily already and has
+  /// no such method, so it answers true without a platform call.
+  @override
+  Future<bool> configure() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return true;
+    final ok = await methodChannel.invokeMethod<bool>('configure');
+    return ok ?? false;
+  }
+
   @override
   Future<bool> startRegistration() async {
     final ok = await methodChannel.invokeMethod<bool>('startRegistration');
