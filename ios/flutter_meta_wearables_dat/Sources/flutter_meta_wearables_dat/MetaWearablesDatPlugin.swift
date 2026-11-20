@@ -2362,14 +2362,14 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
     startDeviceAvailabilityMonitoring()
     activeDeviceHandler?.restartMonitoring(force: true)
     deviceStateHandler?.restartMonitoring(force: true)
-    // The voice channel follows the new pick.
-    voiceControllerStorage?.listen()
-    guard deviceId != nil else { return true }
     let deadline = Date().addingTimeInterval(selectorResolveTimeout)
     while deviceSelector.activeDevice == nil, Date() < deadline {
       try? await Task.sleep(for: .milliseconds(150))
     }
-    return deviceSelector.activeDevice != nil
+    // The voice channel follows the new pick, once the selector has one (a
+    // running channel moves to it; none running is left alone).
+    if voiceControllerStorage != nil { voiceControllerStorage?.listen() }
+    return deviceId == nil || deviceSelector.activeDevice != nil
   }
 
   func getDevices(result: @escaping FlutterResult) {
