@@ -26,11 +26,14 @@ capture, and background streaming on iOS 17.2+.
     # CONCETTO FORK (capture session): Meta's 1.0.1 Display and Inputs
     # modules, from facebook/meta-wearables-dat-ios at tag 1.0.1.
     'flutter_meta_wearables_dat/Frameworks/MWDATDisplay.xcframework',
-    'flutter_meta_wearables_dat/Frameworks/MWDATInputs.xcframework'
+    'flutter_meta_wearables_dat/Frameworks/MWDATInputs.xcframework',
+    # CONCETTO FORK (voice on camera glasses): Meta's 1.0.1 Speech, the
+    # glasses' own recogniser.
+    'flutter_meta_wearables_dat/Frameworks/MWDATSpeech.xcframework'
   ]
   s.preserve_paths = 'flutter_meta_wearables_dat/Frameworks/*.xcframework'
   s.frameworks = 'CoreBluetooth', 'Network', 'AVFoundation', 'Accelerate', 'VideoToolbox'
-  s.xcconfig = { 'OTHER_LDFLAGS' => '-framework MWDATCamera -framework MWDATCore -framework MWDATDisplay -framework MWDATInputs' }
+  s.xcconfig = { 'OTHER_LDFLAGS' => '-framework MWDATCamera -framework MWDATCore -framework MWDATDisplay -framework MWDATInputs -framework MWDATSpeech' }
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386', 'OTHER_LDFLAGS' => '-lc++' }

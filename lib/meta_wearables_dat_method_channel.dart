@@ -475,4 +475,51 @@ class MethodChannelMetaWearablesDat extends MetaWearablesDatPlatform {
       (dynamic event) => Map<String, Object?>.from(event as Map),
     );
   }
+
+  // CONCETTO FORK (voice on camera glasses, choosing the pair): iOS only.
+
+  /// The event channel of the voice launch, the glasses' recogniser and the
+  /// phone's voice.
+  @visibleForTesting
+  final voiceEventChannel = const EventChannel(
+    'flutter_meta_wearables_dat/voice_events',
+  );
+
+  @override
+  Future<bool> voiceListen() async =>
+      await methodChannel.invokeMethod<bool>('voiceListen') ?? false;
+
+  @override
+  Future<bool> speechStart() async =>
+      await methodChannel.invokeMethod<bool>('speechStart') ?? false;
+
+  @override
+  Future<bool> speechStop() async =>
+      await methodChannel.invokeMethod<bool>('speechStop') ?? false;
+
+  @override
+  Future<bool> speak(String text, {String? language}) async =>
+      await methodChannel.invokeMethod<bool>('speak', {
+        'text': text,
+        'language': ?language,
+      }) ??
+      false;
+
+  @override
+  Future<bool> speakStop() async =>
+      await methodChannel.invokeMethod<bool>('speakStop') ?? false;
+
+  @override
+  Stream<Map<String, Object?>> voiceEvents() {
+    return voiceEventChannel.receiveBroadcastStream().map(
+      (dynamic event) => Map<String, Object?>.from(event as Map),
+    );
+  }
+
+  @override
+  Future<bool> setDevice(String? deviceId) async =>
+      await methodChannel.invokeMethod<bool>('setDevice', {
+        'deviceId': deviceId,
+      }) ??
+      false;
 }

@@ -209,4 +209,34 @@ abstract class MetaWearablesDatPlatform extends PlatformInterface {
   Stream<Map<String, Object?>> captureEvents() {
     throw UnimplementedError('captureEvents() has not been implemented.');
   }
+
+  // CONCETTO FORK (voice on camera glasses, choosing the pair).
+
+  Future<bool> voiceListen() {
+    throw UnimplementedError('voiceListen() has not been implemented.');
+  }
+
+  Future<bool> speechStart() {
+    throw UnimplementedError('speechStart() has not been implemented.');
+  }
+
+  Future<bool> speechStop() {
+    throw UnimplementedError('speechStop() has not been implemented.');
+  }
+
+  Future<bool> speak(String text, {String? language}) {
+    throw UnimplementedError('speak() has not been implemented.');
+  }
+
+  Future<bool> speakStop() {
+    throw UnimplementedError('speakStop() has not been implemented.');
+  }
+
+  Stream<Map<String, Object?>> voiceEvents() {
+    throw UnimplementedError('voiceEvents() has not been implemented.');
+  }
+
+  Future<bool> setDevice(String? deviceId) {
+    throw UnimplementedError('setDevice() has not been implemented.');
+  }
 }

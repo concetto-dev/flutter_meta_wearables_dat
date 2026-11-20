@@ -29,6 +29,11 @@ let package = Package(
             name: "MWDATInputs",
             path: "Frameworks/MWDATInputs.xcframework"
         ),
+        // CONCETTO FORK (voice on camera glasses): Meta's 1.0.1 Speech.
+        .binaryTarget(
+            name: "MWDATSpeech",
+            path: "Frameworks/MWDATSpeech.xcframework"
+        ),
         .target(
             name: "flutter_meta_wearables_dat",
             dependencies: [
@@ -36,6 +41,7 @@ let package = Package(
                 "MWDATCamera",
                 "MWDATDisplay",
                 "MWDATInputs",
+                "MWDATSpeech",
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ],
             resources: [

@@ -257,6 +257,11 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
     // touch the kit.
     let captureEventsChannel = FlutterEventChannel(name: "flutter_meta_wearables_dat/capture_events", binaryMessenger: registrar.messenger())
     captureEventsChannel.setStreamHandler(instance.captureEvents)
+    // CONCETTO FORK (voice on camera glasses): the launch channel, the
+    // glasses' recogniser and the phone's voice, in VoiceController.swift.
+    // Listening does not touch the kit.
+    let voiceEventsChannel = FlutterEventChannel(name: "flutter_meta_wearables_dat/voice_events", binaryMessenger: registrar.messenger())
+    voiceEventsChannel.setStreamHandler(instance.voiceEvents)
 
     // CONCETTO FORK (lazy configure). Upstream started Meta's kit right here,
     // at plugin registration, which is every launch of the host app on every
@@ -284,6 +289,24 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
       events: captureEvents
     )
     captureControllerStorage = controller
+    return controller
+  }
+
+  /// CONCETTO FORK (voice on camera glasses): built on first use. Its speech
+  /// rides this plugin's device session; its launch channel follows the pair
+  /// the shared selector picks.
+  let voiceEvents = VoiceEventStreamHandler()
+  private var voiceControllerStorage: VoiceController?
+
+  @MainActor
+  func voiceController() -> VoiceController {
+    if let existing = voiceControllerStorage { return existing }
+    let controller = VoiceController(
+      sessionProvider: { [unowned self] in try await self.ensureDeviceSessionStarted() },
+      activePair: { [unowned self] in self.deviceSelector.activeDevice },
+      events: voiceEvents
+    )
+    voiceControllerStorage = controller
     return controller
   }
 
@@ -403,6 +426,47 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
         captureShow(call: call, result: result)
       case "captureStop":
         captureStop(call: call, result: result)
+      case "voiceListen":
+        Task { @MainActor in
+          self.voiceController().listen()
+          result(true)
+        }
+      case "speechStart":
+        Task { @MainActor in
+          do {
+            try await self.voiceController().startSpeech()
+            result(true)
+          } catch let failure as CaptureFailure {
+            result(FlutterError(code: failure.code, message: failure.detail, details: nil))
+          } catch {
+            result(FlutterError(code: "SPEECH_FAILED", message: String(describing: error), details: nil))
+          }
+        }
+      case "speechStop":
+        Task { @MainActor in
+          await self.voiceController().stopSpeech()
+          result(true)
+        }
+      case "speak":
+        let args = call.arguments as? [String: Any]
+        guard let text = args?["text"] as? String, !text.isEmpty else {
+          result(FlutterError(code: "INVALID_ARGS", message: "text missing", details: nil))
+          return
+        }
+        let language = args?["language"] as? String
+        Task { @MainActor in
+          result(await self.voiceController().speak(text, language: language))
+        }
+      case "speakStop":
+        Task { @MainActor in
+          self.voiceController().stopSpeaking()
+          result(true)
+        }
+      case "setDevice":
+        let deviceId = (call.arguments as? [String: Any])?["deviceId"] as? String
+        Task { @MainActor in
+          result(await self.pinDevice(deviceId))
+        }
       case "getRegistrationState":
         getRegistrationState(result: result)
       case "getDevices":
@@ -2277,6 +2341,37 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
   /// `isStreamingDevice` reflects what the *live* stream is using, gated on the
   /// stream's actual `.streaming` state (not just a non-nil reference, which
   /// can be stale after an SDK-driven stop).
+  /// CONCETTO FORK (choosing the pair): pins every later session (capture,
+  /// speech, the voice channel, a stream) to `deviceId` (a `WearableDevice.id`
+  /// from getDevices), or back to auto-select with nil. The pin change in
+  /// `startStreamSession`, on its own: a pair in use is let go first, then the
+  /// shared selector is rebuilt and every observer rebound. Answers whether
+  /// the pinned pair resolved (always true for nil).
+  @MainActor
+  func pinDevice(_ deviceId: String?) async -> Bool {
+    guard deviceId != pinnedDeviceId else {
+      return deviceId == nil || deviceSelector.activeDevice != nil
+    }
+    await captureControllerStorage?.stop(endingSession: false)
+    await voiceControllerStorage?.stopSpeech()
+    await teardownStreamOnly()
+    pinnedDeviceId = deviceId
+    await teardownDeviceSession()
+    deviceSelector = makeDeviceSelector()
+    lastSelectorRebuild = Date()
+    startDeviceAvailabilityMonitoring()
+    activeDeviceHandler?.restartMonitoring(force: true)
+    deviceStateHandler?.restartMonitoring(force: true)
+    // The voice channel follows the new pick.
+    voiceControllerStorage?.listen()
+    guard deviceId != nil else { return true }
+    let deadline = Date().addingTimeInterval(selectorResolveTimeout)
+    while deviceSelector.activeDevice == nil, Date() < deadline {
+      try? await Task.sleep(for: .milliseconds(150))
+    }
+    return deviceSelector.activeDevice != nil
+  }
+
   func getDevices(result: @escaping FlutterResult) {
     Task { @MainActor in
       let active = deviceSelector.activeDevice

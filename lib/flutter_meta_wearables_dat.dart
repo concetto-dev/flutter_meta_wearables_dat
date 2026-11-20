@@ -821,6 +821,55 @@ class MetaWearablesDat {
     return MetaWearablesDatPlatform.instance.captureEvents();
   }
 
+  /// CONCETTO FORK (voice on camera glasses, iOS): opens the channel on which
+  /// "Hey Meta, start {app}" arrives, once the app is registered. Each launch
+  /// is answered to Meta AI natively, then arrives on [voiceEvents] as
+  /// `{type: launch}`. The app's name and the Voice Invocation permission come
+  /// from the Wearables Developer Center, not from the app.
+  static Future<bool> voiceListen() {
+    return MetaWearablesDatPlatform.instance.voiceListen();
+  }
+
+  /// CONCETTO FORK (iOS): starts the glasses' own speech recogniser
+  /// (MWDATSpeech, Meta's microphone permission) in the device session.
+  /// Results arrive on [voiceEvents] as `{type: transcript, text, final,
+  /// confidence}`. Throws a `PlatformException` (`SPEECH_UNAVAILABLE`,
+  /// `SESSION_FAILED`, `SPEECH_FAILED`).
+  static Future<bool> speechStart() {
+    return MetaWearablesDatPlatform.instance.speechStart();
+  }
+
+  /// CONCETTO FORK (iOS): stops the recogniser; the device session stays.
+  static Future<bool> speechStop() {
+    return MetaWearablesDatPlatform.instance.speechStop();
+  }
+
+  /// CONCETTO FORK (iOS): the phone speaks [text] (on the glasses when they
+  /// are its Bluetooth audio) and answers true once said, false if cut off.
+  static Future<bool> speak(String text, {String? language}) {
+    return MetaWearablesDatPlatform.instance.speak(text, language: language);
+  }
+
+  /// CONCETTO FORK (iOS): cuts the phone's voice off.
+  static Future<bool> speakStop() {
+    return MetaWearablesDatPlatform.instance.speakStop();
+  }
+
+  /// CONCETTO FORK (iOS): `{type: channel, state, detail}`, `{type: launch,
+  /// answered}`, `{type: speech_state, state}`, `{type: transcript, text,
+  /// final, confidence}` and `{type: error, where, code, detail}`.
+  static Stream<Map<String, Object?>> voiceEvents() {
+    return MetaWearablesDatPlatform.instance.voiceEvents();
+  }
+
+  /// CONCETTO FORK (iOS): every later session uses the pair [deviceId] (a
+  /// [WearableDevice.id] from [getDevices]), or auto-selects again with null.
+  /// Anything running on the old pair is put down first. Answers whether the
+  /// pair was found.
+  static Future<bool> setDevice(String? deviceId) {
+    return MetaWearablesDatPlatform.instance.setDevice(deviceId);
+  }
+
   /// Requests the Android runtime permissions required by the DAT SDK
   /// (Bluetooth, Internet). Returns true if all permissions are granted.
   /// No-op on iOS.
