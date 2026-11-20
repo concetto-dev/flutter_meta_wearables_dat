@@ -759,6 +759,68 @@ class MetaWearablesDat {
     return MetaWearablesDatPlatform.instance.configure();
   }
 
+  /// CONCETTO FORK (capture session, iOS): starts one glasses session for
+  /// photos, after Meta's BirdSpotter sample. A small HEVC stream wakes the
+  /// sensor, the standalone `Photo` capability takes over, and the stream is
+  /// put down. With [display], Meta Ray-Ban Display shows the card sent by
+  /// [captureShow] for the whole session. With [inputs], the capture button,
+  /// the temple and the action button arrive on [captureEvents].
+  ///
+  /// Answers `{ready, display, inputs, supportsDisplay}` once a still can be
+  /// taken. Takes the camera from any preview stream. Throws a
+  /// `PlatformException` (`SESSION_FAILED`, `CAMERA_FAILED`, `START_TIMEOUT`,
+  /// `STOPPED`) when it cannot.
+  static Future<Map<String, Object?>> captureStart({
+    bool display = true,
+    bool inputs = true,
+  }) {
+    return MetaWearablesDatPlatform.instance.captureStart(
+      display: display,
+      inputs: inputs,
+    );
+  }
+
+  /// CONCETTO FORK (capture session, iOS): one standalone still, answered as
+  /// its encoded bytes. [resolution] is `small`, `medium` (720p), `large`
+  /// (1080p) or `full` (12 MP); [quality] is `low`, `medium` or `high`.
+  /// Failures arrive as a `PlatformException` with the SDK's reason
+  /// (`PHOTO_BUSY`, `PHOTO_NOT_READY`, `PHOTO_TIMEOUT`, `DEVICE_HEALTH`, …).
+  static Future<Uint8List> captureStill({
+    String resolution = 'medium',
+    String quality = 'high',
+  }) {
+    return MetaWearablesDatPlatform.instance.captureStill(
+      resolution: resolution,
+      quality: quality,
+    );
+  }
+
+  /// CONCETTO FORK (capture session, iOS): the card Meta Ray-Ban Display
+  /// shows: `{title, lines: [..], meta, buttons: [{id, label, icon,
+  /// primary}]}`, at most three buttons. `icon` is a Meta `IconName` raw
+  /// value. A tap arrives on [captureEvents] as `{type: tap, id}`. The card
+  /// is drawn again whenever the display comes back.
+  static Future<bool> captureShow(Map<String, Object?> card) {
+    return MetaWearablesDatPlatform.instance.captureShow(card);
+  }
+
+  /// CONCETTO FORK (capture session, iOS): puts the session down. With
+  /// [endSession], the glasses are handed back to the wearer.
+  static Future<bool> captureStop({bool endSession = true}) {
+    return MetaWearablesDatPlatform.instance.captureStop(
+      endSession: endSession,
+    );
+  }
+
+  /// CONCETTO FORK (capture session, iOS): the session's events, each a map
+  /// with a `type`: `state` (starting, ready, camera_lost, photo_stopped,
+  /// stopped), `tap` ({id}), `input` ({kind: capture|button|select|back|nav,
+  /// press, source}), `progress` ({fraction}), `display`, `inputs`,
+  /// `stream`, `photo_state` or `error` ({where, code, detail}).
+  static Stream<Map<String, Object?>> captureEvents() {
+    return MetaWearablesDatPlatform.instance.captureEvents();
+  }
+
   /// Requests the Android runtime permissions required by the DAT SDK
   /// (Bluetooth, Internet). Returns true if all permissions are granted.
   /// No-op on iOS.

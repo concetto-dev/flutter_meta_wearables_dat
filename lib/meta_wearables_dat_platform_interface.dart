@@ -181,4 +181,32 @@ abstract class MetaWearablesDatPlatform extends PlatformInterface {
   Stream<DeviceState> deviceStateStream() {
     throw UnimplementedError('deviceStateStream() has not been implemented.');
   }
+
+  // CONCETTO FORK (capture session): see MetaWearablesDat.captureStart.
+
+  Future<Map<String, Object?>> captureStart({
+    required bool display,
+    required bool inputs,
+  }) {
+    throw UnimplementedError('captureStart() has not been implemented.');
+  }
+
+  Future<Uint8List> captureStill({
+    required String resolution,
+    required String quality,
+  }) {
+    throw UnimplementedError('captureStill() has not been implemented.');
+  }
+
+  Future<bool> captureShow(Map<String, Object?> card) {
+    throw UnimplementedError('captureShow() has not been implemented.');
+  }
+
+  Future<bool> captureStop({required bool endSession}) {
+    throw UnimplementedError('captureStop() has not been implemented.');
+  }
+
+  Stream<Map<String, Object?>> captureEvents() {
+    throw UnimplementedError('captureEvents() has not been implemented.');
+  }
 }

@@ -414,4 +414,65 @@ class MethodChannelMetaWearablesDat extends MetaWearablesDatPlatform {
       return state;
     });
   }
+
+  // CONCETTO FORK (capture session): iOS only. Android has no such methods
+  // and answers MissingPluginException, which callers treat as "not here".
+
+  /// The event channel of the capture session (photo, display, inputs).
+  @visibleForTesting
+  final captureEventChannel = const EventChannel(
+    'flutter_meta_wearables_dat/capture_events',
+  );
+
+  @override
+  Future<Map<String, Object?>> captureStart({
+    required bool display,
+    required bool inputs,
+  }) async {
+    final status = await methodChannel.invokeMapMethod<String, Object?>(
+      'captureStart',
+      {'display': display, 'inputs': inputs},
+    );
+    return status ?? const {};
+  }
+
+  @override
+  Future<Uint8List> captureStill({
+    required String resolution,
+    required String quality,
+  }) async {
+    final bytes = await methodChannel.invokeMethod<Uint8List>(
+      'captureStill',
+      {'resolution': resolution, 'quality': quality},
+    );
+    if (bytes == null) {
+      throw PlatformException(
+        code: 'PHOTO_EMPTY',
+        message: 'captureStill answered no bytes',
+      );
+    }
+    return bytes;
+  }
+
+  @override
+  Future<bool> captureShow(Map<String, Object?> card) async {
+    final ok = await methodChannel.invokeMethod<bool>('captureShow', card);
+    return ok ?? false;
+  }
+
+  @override
+  Future<bool> captureStop({required bool endSession}) async {
+    final ok = await methodChannel.invokeMethod<bool>(
+      'captureStop',
+      {'endSession': endSession},
+    );
+    return ok ?? false;
+  }
+
+  @override
+  Stream<Map<String, Object?>> captureEvents() {
+    return captureEventChannel.receiveBroadcastStream().map(
+      (dynamic event) => Map<String, Object?>.from(event as Map),
+    );
+  }
 }

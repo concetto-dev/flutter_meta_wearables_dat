@@ -20,11 +20,22 @@ let package = Package(
             name: "MWDATCamera",
             path: "Frameworks/MWDATCamera.xcframework"
         ),
+        // CONCETTO FORK (capture session): Meta's 1.0.1 Display and Inputs.
+        .binaryTarget(
+            name: "MWDATDisplay",
+            path: "Frameworks/MWDATDisplay.xcframework"
+        ),
+        .binaryTarget(
+            name: "MWDATInputs",
+            path: "Frameworks/MWDATInputs.xcframework"
+        ),
         .target(
             name: "flutter_meta_wearables_dat",
             dependencies: [
                 "MWDATCore",
                 "MWDATCamera",
+                "MWDATDisplay",
+                "MWDATInputs",
                 .product(name: "FlutterFramework", package: "FlutterFramework")
             ],
             resources: [

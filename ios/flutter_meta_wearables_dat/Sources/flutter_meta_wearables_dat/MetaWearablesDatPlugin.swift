@@ -252,6 +252,11 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
     })
     instance.deviceStateHandler = deviceStateHandler
     deviceStateChannel.setStreamHandler(deviceStateHandler)
+    // CONCETTO FORK (capture session): events of the photo, display and
+    // inputs session in CaptureSessionController.swift. Listening does not
+    // touch the kit.
+    let captureEventsChannel = FlutterEventChannel(name: "flutter_meta_wearables_dat/capture_events", binaryMessenger: registrar.messenger())
+    captureEventsChannel.setStreamHandler(instance.captureEvents)
 
     // CONCETTO FORK (lazy configure). Upstream started Meta's kit right here,
     // at plugin registration, which is every launch of the host app on every
@@ -261,6 +266,25 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
     // configures first. A host that never calls the plugin never starts it.
     // The event channels above only reach the kit when Dart listens to them;
     // a host must call `configure()` before it listens to any of them.
+  }
+
+  /// CONCETTO FORK (capture session): the photo, display and inputs session,
+  /// built on first use. It shares this plugin's device session and takes the
+  /// camera from the preview stream when it starts.
+  let captureEvents = CaptureEventStreamHandler()
+  private var captureControllerStorage: CaptureSessionController?
+
+  @MainActor
+  func captureController() -> CaptureSessionController {
+    if let existing = captureControllerStorage { return existing }
+    let controller = CaptureSessionController(
+      sessionProvider: { [unowned self] in try await self.ensureDeviceSessionStarted() },
+      releasePreview: { [unowned self] in await self.teardownStreamOnly() },
+      endSession: { [unowned self] in await self.teardownDeviceSession() },
+      events: captureEvents
+    )
+    captureControllerStorage = controller
+    return controller
   }
 
   /// CONCETTO FORK: whether Meta's kit has been started in this process, and
@@ -371,6 +395,14 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
         stopStreamSession(call: call, result: result)
       case "capturePhoto":
         capturePhoto(call: call, result: result)
+      case "captureStart":
+        captureStart(call: call, result: result)
+      case "captureStill":
+        captureStill(call: call, result: result)
+      case "captureShow":
+        captureShow(call: call, result: result)
+      case "captureStop":
+        captureStop(call: call, result: result)
       case "getRegistrationState":
         getRegistrationState(result: result)
       case "getDevices":
@@ -839,7 +871,7 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
   /// Returns a DeviceSession in `.started` state, creating one if needed.
   /// Mirrors the pattern in Meta's CameraAccess sample (DeviceSessionManager).
   @MainActor
-  private func ensureDeviceSessionStarted() async throws -> DeviceSession {
+  func ensureDeviceSessionStarted() async throws -> DeviceSession {
     if let existing = deviceSession, existing.state == .started {
       return existing
     }
@@ -1060,7 +1092,7 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
   }
 
   @MainActor
-  private func teardownStreamOnly() async {
+  func teardownStreamOnly() async {
     streamTeardownGate.enter()
     defer { streamTeardownGate.leave() }
 
@@ -1222,7 +1254,7 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
   /// disconnects, when mock devices are disabled, or when a new mock
   /// config is applied.
   @MainActor
-  private func teardownDeviceSession() async {
+  func teardownDeviceSession() async {
     // Keep admission closed after stream cleanup until the device session has
     // stopped too. Stream-only and queued teardowns hold their own nested scope.
     streamTeardownGate.enter()
