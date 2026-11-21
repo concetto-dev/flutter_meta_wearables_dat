@@ -5,7 +5,7 @@
 # Run it as a Run Script build phase of the app target, after "Embed
 # Frameworks" and after the CocoaPods phases:
 #
-#   bash "${PODS_ROOT}/../.symlinks/plugins/flutter_meta_wearables_dat/ios/flutter_meta_wearables_dat/MockDevice/embed-mock-device.sh"
+#   bash "${SRCROOT}/.symlinks/plugins/flutter_meta_wearables_dat/ios/flutter_meta_wearables_dat/MockDevice/embed-mock-device.sh"
 #
 # It does nothing for any configuration whose name does not start with
 # "Debug", so a Release or Profile build (TestFlight, production) never

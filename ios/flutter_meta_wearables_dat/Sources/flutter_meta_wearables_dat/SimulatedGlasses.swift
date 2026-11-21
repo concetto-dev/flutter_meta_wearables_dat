@@ -220,8 +220,11 @@ final class SimulatedGlasses {
         _ = dlopen(dir + "/MWDATMockDevice.framework/MWDATMockDevice", RTLD_NOW)
       }
     }
-    guard let cls = NSClassFromString("MWDATMockDeviceKit") as AnyObject? else { return nil }
-    return cls.perform(NSSelectorFromString("sharedInstance"))?.takeUnretainedValue()
+    guard let cls: AnyClass = NSClassFromString("MWDATMockDeviceKit") else { return nil }
+    // A class object is an Objective-C object; +sharedInstance is the
+    // kit's `@objc public static let sharedInstance`.
+    let classObject: AnyObject = cls
+    return classObject.perform(NSSelectorFromString("sharedInstance"))?.takeUnretainedValue()
   }
 
   private func services() -> MockServicesObjC? {
@@ -302,6 +305,7 @@ final class SimulatedGlasses {
 
 #if DEBUG
 /// Moves the floating display with a finger.
+@MainActor
 private final class PreviewDrag: NSObject {
   static let shared = PreviewDrag()
 
