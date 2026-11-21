@@ -426,6 +426,12 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
         captureShow(call: call, result: result)
       case "captureStop":
         captureStop(call: call, result: result)
+      case "captureVideoStart":
+        captureVideoStart(call: call, result: result)
+      case "captureVideoStop":
+        captureVideoStop(call: call, result: result)
+      case "captureClick":
+        captureClick(call: call, result: result)
       case "voiceListen":
         Task { @MainActor in
           self.voiceController().listen()

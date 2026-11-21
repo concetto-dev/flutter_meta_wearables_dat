@@ -812,11 +812,51 @@ class MetaWearablesDat {
     );
   }
 
+  /// CONCETTO FORK (glasses video, iOS): records the glasses' camera, and
+  /// with [audio] their microphone, into the MP4 at [path], inside a started
+  /// capture session. Stills are refused while it records
+  /// (`VIDEO_RECORDING`). [resolution] is `low`, `medium` or `high`;
+  /// [frameRate] is one the kit streams at (2, 7, 15, 24, 30), else 24.
+  /// Answers `{recording, resolution, frameRate, audio, asked}` once frames
+  /// arrive. Throws `NOT_STARTED`, `VIDEO_BUSY`, `PHOTO_BUSY`,
+  /// `CAMERA_FAILED` or `VIDEO_TIMEOUT`.
+  static Future<Map<String, Object?>> captureVideoStart({
+    required String path,
+    String resolution = 'high',
+    int frameRate = 24,
+    bool audio = true,
+  }) {
+    return MetaWearablesDatPlatform.instance.captureVideoStart(
+      path: path,
+      resolution: resolution,
+      frameRate: frameRate,
+      audio: audio,
+    );
+  }
+
+  /// CONCETTO FORK (glasses video, iOS): stops the video and brings the
+  /// photo camera back. With [keep], answers the file's facts: `{path,
+  /// durationMs, frames, audioBuffers, dropped, bytes, kind, width, height}`
+  /// (the same map arrives as a `video` event with `state: saved`). Without,
+  /// the file is deleted. Throws `NOT_RECORDING`, `NO_FRAMES` or
+  /// `WRITER_FAILED`.
+  static Future<Map<String, Object?>> captureVideoStop({bool keep = true}) {
+    return MetaWearablesDatPlatform.instance.captureVideoStop(keep: keep);
+  }
+
+  /// CONCETTO FORK (the click, iOS): a short sound in the glasses' speakers:
+  /// `shutter`, `start` or `stop`. Answers whether it played; never throws.
+  static Future<bool> captureClick(String kind) {
+    return MetaWearablesDatPlatform.instance.captureClick(kind);
+  }
+
   /// CONCETTO FORK (capture session, iOS): the session's events, each a map
   /// with a `type`: `state` (starting, ready, camera_lost, photo_stopped,
   /// stopped), `tap` ({id}), `input` ({kind: capture|button|select|back|nav,
   /// press, source}), `progress` ({fraction}), `display`, `inputs`,
-  /// `stream`, `photo_state` or `error` ({where, code, detail}).
+  /// `stream`, `photo_state`, `video` ({state: starting|streaming|lost|
+  /// saved|failed|dropped, and the file's facts when saved}) or `error`
+  /// ({where, code, detail}).
   static Stream<Map<String, Object?>> captureEvents() {
     return MetaWearablesDatPlatform.instance.captureEvents();
   }

@@ -470,6 +470,43 @@ class MethodChannelMetaWearablesDat extends MetaWearablesDatPlatform {
   }
 
   @override
+  Future<Map<String, Object?>> captureVideoStart({
+    required String path,
+    required String resolution,
+    required int frameRate,
+    required bool audio,
+  }) async {
+    final status = await methodChannel.invokeMapMethod<String, Object?>(
+      'captureVideoStart',
+      {
+        'path': path,
+        'resolution': resolution,
+        'frameRate': frameRate,
+        'audio': audio,
+      },
+    );
+    return status ?? const {};
+  }
+
+  @override
+  Future<Map<String, Object?>> captureVideoStop({required bool keep}) async {
+    final facts = await methodChannel.invokeMapMethod<String, Object?>(
+      'captureVideoStop',
+      {'keep': keep},
+    );
+    return facts ?? const {};
+  }
+
+  @override
+  Future<bool> captureClick(String kind) async {
+    final ok = await methodChannel.invokeMethod<bool>(
+      'captureClick',
+      {'kind': kind},
+    );
+    return ok ?? false;
+  }
+
+  @override
   Stream<Map<String, Object?>> captureEvents() {
     return captureEventChannel.receiveBroadcastStream().map(
       (dynamic event) => Map<String, Object?>.from(event as Map),

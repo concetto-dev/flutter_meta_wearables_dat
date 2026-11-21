@@ -91,6 +91,45 @@ void main() {
     expect(calls.single.arguments, {'endSession': true});
   });
 
+  test('captureVideoStart sends the path and the stream it asks for',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return <Object?, Object?>{'recording': true, 'frameRate': 24};
+    });
+    final status =
+        await MetaWearablesDat.captureVideoStart(path: '/tmp/walk.mp4');
+    expect(calls.single.method, 'captureVideoStart');
+    expect(calls.single.arguments, {
+      'path': '/tmp/walk.mp4',
+      'resolution': 'high',
+      'frameRate': 24,
+      'audio': true,
+    });
+    expect(status['recording'], true);
+  });
+
+  test('captureVideoStop keeps by default and answers the file', () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return <Object?, Object?>{'path': '/tmp/walk.mp4', 'durationMs': 61000};
+    });
+    final facts = await MetaWearablesDat.captureVideoStop();
+    expect(calls.single.arguments, {'keep': true});
+    expect(facts['durationMs'], 61000);
+  });
+
+  test('captureClick names its sound and answers whether it played',
+      () async {
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return true;
+    });
+    expect(await MetaWearablesDat.captureClick('start'), true);
+    expect(calls.single.method, 'captureClick');
+    expect(calls.single.arguments, {'kind': 'start'});
+  });
+
   test('captureEvents decodes each event as a map', () async {
     const events = 'flutter_meta_wearables_dat/capture_events';
     messenger.setMockStreamHandler(

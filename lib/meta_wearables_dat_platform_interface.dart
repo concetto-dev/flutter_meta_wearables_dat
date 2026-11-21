@@ -206,6 +206,23 @@ abstract class MetaWearablesDatPlatform extends PlatformInterface {
     throw UnimplementedError('captureStop() has not been implemented.');
   }
 
+  Future<Map<String, Object?>> captureVideoStart({
+    required String path,
+    required String resolution,
+    required int frameRate,
+    required bool audio,
+  }) {
+    throw UnimplementedError('captureVideoStart() has not been implemented.');
+  }
+
+  Future<Map<String, Object?>> captureVideoStop({required bool keep}) {
+    throw UnimplementedError('captureVideoStop() has not been implemented.');
+  }
+
+  Future<bool> captureClick(String kind) {
+    throw UnimplementedError('captureClick() has not been implemented.');
+  }
+
   Stream<Map<String, Object?>> captureEvents() {
     throw UnimplementedError('captureEvents() has not been implemented.');
   }

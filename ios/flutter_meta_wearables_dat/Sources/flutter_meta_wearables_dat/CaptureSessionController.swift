@@ -28,11 +28,21 @@ import MWDATInputs
 //   events. The Neural Band is left to the wearer, because it moves focus on
 //   the card.
 //
-// Dart reaches it through four methods (`captureStart`, `captureStill`,
-// `captureShow`, `captureStop`) and one event channel,
+// - A video (2026-11-21, the site walk): the photo camera gives the sensor up
+//   and a second camera is attached with the video's own stream (HEVC, and
+//   the glasses' microphone as 16 kHz PCM), whose frames and audio go to
+//   `GlassesVideoRecorder`, an MP4 on the phone. When the video stops, or the
+//   session ends under it, the file is finished and named in a `video` event;
+//   then the photo camera comes back the way a start brings it up. The
+//   display and the inputs come back by themselves if the change puts them
+//   down.
+//
+// Dart reaches it through these methods: `captureStart`, `captureStill`,
+// `captureShow`, `captureStop`, `captureVideoStart`, `captureVideoStop` and
+// `captureClick`. Events arrive on one channel,
 // `flutter_meta_wearables_dat/capture_events`. Every event is a map with a
 // `type`: `state`, `stream`, `photo_state`, `progress`, `tap`, `input`,
-// `display`, `inputs` or `error`.
+// `display`, `inputs`, `video` or `error`.
 
 /// A failure Dart sees as a `PlatformException` with this code.
 struct CaptureFailure: Error {
@@ -146,6 +156,22 @@ final class CaptureSessionController {
   private var lastCard: CaptureCard?
   private var readyWaiters: [OneShot<Bool>] = []
   private var pendingPhoto: OneShot<Result<Data, CaptureFailure>>?
+  /// The photo camera is coming back after a video: a still waits for it.
+  private var photoRestoring = false
+
+  // The video (the site walk).
+  private var videoCamera: Camera?
+  private var recorder: GlassesVideoRecorder?
+  private var videoTokens: [any AnyListenerToken] = []
+  private var videoWaiters: [OneShot<Bool>] = []
+  private var videoLive = false
+  private var videoLostSent = false
+  private var videoConfig: [String: Any] = [:]
+
+  /// The small stream that only wakes the sensor for stills.
+  private let photoConfig = StreamConfiguration(videoCodec: .hvc1, resolution: .low, frameRate: 2)
+  /// How long a video's stream may take to send its first frames.
+  private let videoTimeoutSeconds: Double = 15
 
   /// How long a start may take: the session, the camera, the stream's first
   /// frames and the photo capability. BirdSpotter's own start is a few
@@ -175,7 +201,8 @@ final class CaptureSessionController {
   /// Starts the session, or refreshes what it carries when it is already up.
   /// Answers once a still can be taken.
   func start(display: Bool, inputs: Bool) async throws -> [String: Any] {
-    if camera != nil, photoStarted {
+    // A video holds the camera: a start refreshes the rest and leaves it be.
+    if camera != nil && photoStarted || videoCamera != nil {
       wantsDisplay = display
       wantsInputs = inputs
       attachExtrasIfNeeded()
@@ -200,10 +227,9 @@ final class CaptureSessionController {
     }
     self.session = session
 
-    let config = StreamConfiguration(videoCodec: .hvc1, resolution: .low, frameRate: 2)
     let attached: Camera?
     do {
-      attached = try session.addCamera(config: config)
+      attached = try session.addCamera(config: photoConfig)
     } catch {
       throw CaptureFailure(code: "CAMERA_FAILED", detail: String(describing: error))
     }
@@ -229,13 +255,22 @@ final class CaptureSessionController {
   /// Puts everything down. The device session is the plugin's and stays up
   /// unless `endingSession`, which hands the glasses back to the wearer.
   func stop(endingSession: Bool) async {
-    let wasRunning = camera != nil || display != nil || inputs != nil
+    let wasRunning = camera != nil || display != nil || inputs != nil || videoCamera != nil
     generation += 1
     let (display, inputs, camera, session) = (self.display, self.inputs, self.camera, self.session)
+    let (videoCamera, recorder) = (self.videoCamera, self.recorder)
     self.display = nil
     self.inputs = nil
     self.camera = nil
     self.session = nil
+    self.videoCamera = nil
+    self.recorder = nil
+    let videoWaiting = videoWaiters
+    videoWaiters = []
+    for waiter in videoWaiting { waiter.resolve(false) }
+    videoLive = false
+    videoLostSent = false
+    photoRestoring = false
     inputsDrain?.cancel()
     inputsDrain = nil
     pendingPhoto?.resolve(.failure(CaptureFailure(code: "STOPPED", detail: "the session stopped")))
@@ -252,10 +287,11 @@ final class CaptureSessionController {
     displayRestarts = 0
     lastCard = nil
 
-    let tokens = cameraTokens + displayTokens + inputsTokens
+    let tokens = cameraTokens + displayTokens + inputsTokens + videoTokens
     cameraTokens = []
     displayTokens = []
     inputsTokens = []
+    videoTokens = []
     for token in tokens { await token.cancel() }
 
     display?.stop()
@@ -263,6 +299,11 @@ final class CaptureSessionController {
       try? session.removeInputs()
     }
     camera?.stop()
+    videoCamera?.stream.stop()
+    videoCamera?.stop()
+    // A video the session ended under is kept: the file is finished and
+    // named in a `video` event, for Dart to file.
+    if let recorder { _ = await finishVideo(recorder) }
     if endingSession { await endSession() }
     if wasRunning { emit(["type": "state", "state": "stopped"]) }
   }
@@ -285,6 +326,7 @@ final class CaptureSessionController {
       "ready": photoStarted,
       "display": display != nil,
       "inputs": inputs != nil,
+      "video": recorder != nil,
       "supportsDisplay": session?.device?.supportsDisplay() ?? false,
     ]
   }
@@ -360,6 +402,7 @@ final class CaptureSessionController {
     if state == .started {
       // Published more than once; everything below is idempotent.
       photoStarted = true
+      photoRestoring = false
       if !streamPutDown {
         streamPutDown = true
         camera.stream.stop()
@@ -380,6 +423,14 @@ final class CaptureSessionController {
   // MARK: - Stills
 
   func still(resolution: PhotoResolution, quality: PhotoQuality) async throws -> Data {
+    if recorder != nil {
+      throw CaptureFailure(code: "VIDEO_RECORDING", detail: "a video holds the camera")
+    }
+    // Just after a video the photo camera is on its way back: wait for it,
+    // as a start would.
+    if photoRestoring, !photoStarted, camera != nil {
+      _ = await waitUntilReady()
+    }
     guard let camera, photoStarted else {
       throw CaptureFailure(code: "PHOTO_NOT_READY", detail: "the camera is not up")
     }
@@ -431,6 +482,252 @@ final class CaptureSessionController {
     case .captureFailure: return "CAPTURE_FAILED"
     case .sessionSetupFailed: return "SETUP_FAILED"
     @unknown default: return "PHOTO_ERROR"
+    }
+  }
+
+  // MARK: - The video (the site walk)
+
+  /// The frame rates the kit streams at.
+  nonisolated static let videoFrameRates: [UInt] = [2, 7, 15, 24, 30]
+
+  /// Starts a video into `path`. Answers once the glasses' frames arrive.
+  func startVideo(path: String, resolution: StreamingResolution, frameRate: UInt, audio: Bool)
+    async throws -> [String: Any]
+  {
+    guard let session else {
+      throw CaptureFailure(code: "NOT_STARTED", detail: "the capture session is not up")
+    }
+    guard recorder == nil, videoCamera == nil else {
+      throw CaptureFailure(code: "VIDEO_BUSY", detail: "a video is already recording")
+    }
+    guard pendingPhoto == nil else {
+      throw CaptureFailure(code: "PHOTO_BUSY", detail: "a photo is crossing")
+    }
+    let gen = generation
+    await putPhotoCameraDown()
+    guard gen == generation else {
+      throw CaptureFailure(code: "STOPPED", detail: "stopped while starting the video")
+    }
+    let config = StreamConfiguration(
+      videoCodec: .hvc1,
+      audioCodec: audio ? .pcm(sampleRate: .rate16000, numberOfChannels: 1) : nil,
+      resolution: resolution,
+      frameRate: frameRate)
+    let attached: Camera?
+    do {
+      attached = try session.addCamera(config: config)
+    } catch {
+      restorePhotoCamera(gen: gen)
+      throw CaptureFailure(code: "CAMERA_FAILED", detail: String(describing: error))
+    }
+    guard let camera = attached else {
+      restorePhotoCamera(gen: gen)
+      throw CaptureFailure(code: "CAMERA_FAILED", detail: "the video camera would not attach")
+    }
+    let recorder = GlassesVideoRecorder(url: URL(fileURLWithPath: path), withAudio: audio)
+    self.recorder = recorder
+    videoCamera = camera
+    videoLive = false
+    videoLostSent = false
+    let size = resolution.videoFrameSize
+    videoConfig = [
+      "resolution": String(describing: resolution),
+      "frameRate": Int(frameRate),
+      "audio": audio,
+      "asked": "\(size.width)x\(size.height)",
+    ]
+    observeVideo(camera, recorder: recorder, gen: gen)
+    emit(["type": "video", "state": "starting"])
+    camera.stream.start()
+
+    let live = await waitForVideo()
+    guard gen == generation else {
+      throw CaptureFailure(code: "STOPPED", detail: "stopped while starting the video")
+    }
+    guard live else {
+      self.recorder = nil
+      await putVideoCameraDown()
+      recorder.discard()
+      restorePhotoCamera(gen: gen)
+      throw CaptureFailure(
+        code: "VIDEO_TIMEOUT", detail: "no frame came in \(Int(videoTimeoutSeconds)) s")
+    }
+    var answer = videoConfig
+    answer["recording"] = true
+    return answer
+  }
+
+  /// Stops the video. With `keep` the file is finished and its facts are
+  /// answered (and sent as a `video` event); without, it is dropped. Then the
+  /// photo camera comes back.
+  func stopVideo(keep: Bool) async throws -> [String: Any] {
+    guard let recorder else {
+      throw CaptureFailure(code: "NOT_RECORDING", detail: "no video is recording")
+    }
+    let gen = generation
+    self.recorder = nil
+    await putVideoCameraDown()
+    defer { restorePhotoCamera(gen: gen) }
+    guard keep else {
+      recorder.discard()
+      emit(["type": "video", "state": "dropped"])
+      return ["kept": false]
+    }
+    return try await finishVideo(recorder).get()
+  }
+
+  /// Finishes the file and names it in a `video` event: `saved` with its
+  /// facts, or `failed` with the reason.
+  @discardableResult
+  private func finishVideo(_ recorder: GlassesVideoRecorder) async
+    -> Result<[String: Any], CaptureFailure>
+  {
+    let config = videoConfig
+    switch await recorder.finish() {
+    case .success(let summary):
+      var event = config
+      event["type"] = "video"
+      event["state"] = "saved"
+      event["kept"] = true
+      event["path"] = summary.url.path
+      event["frames"] = summary.videoFrames
+      event["audioBuffers"] = summary.audioBuffers
+      event["dropped"] = summary.droppedFrames
+      event["durationMs"] = summary.durationMs
+      event["bytes"] = summary.bytes
+      event["kind"] = summary.kind
+      event["width"] = summary.width
+      event["height"] = summary.height
+      emit(event)
+      return .success(event)
+    case .failure(let failure):
+      emit(["type": "video", "state": "failed", "code": failure.code, "detail": failure.detail])
+      return .failure(CaptureFailure(code: failure.code, detail: failure.detail))
+    }
+  }
+
+  /// The photo camera gives the sensor up for the video's stream.
+  private func putPhotoCameraDown() async {
+    let tokens = cameraTokens
+    cameraTokens = []
+    for token in tokens { await token.cancel() }
+    let waiters = readyWaiters
+    readyWaiters = []
+    for waiter in waiters { waiter.resolve(false) }
+    let camera = self.camera
+    self.camera = nil
+    cameraHasStarted = false
+    photoStartRequested = false
+    photoStarted = false
+    streamPutDown = false
+    photoRestoring = false
+    camera?.stop()
+  }
+
+  private func putVideoCameraDown() async {
+    let tokens = videoTokens
+    videoTokens = []
+    for token in tokens { await token.cancel() }
+    let waiters = videoWaiters
+    videoWaiters = []
+    for waiter in waiters { waiter.resolve(false) }
+    let camera = videoCamera
+    videoCamera = nil
+    videoLive = false
+    camera?.stream.stop()
+    camera?.stop()
+  }
+
+  /// The photo camera back after a video, brought up the way a start brings
+  /// it up (the small stream, then the still). A still waits for it.
+  private func restorePhotoCamera(gen: Int) {
+    guard gen == generation, let session, camera == nil, videoCamera == nil else { return }
+    let attached: Camera?
+    do {
+      attached = try session.addCamera(config: photoConfig)
+    } catch {
+      emit(["type": "error", "where": "camera", "code": "CAMERA_FAILED", "detail": String(describing: error)])
+      return
+    }
+    guard let camera = attached else {
+      emit([
+        "type": "error", "where": "camera", "code": "CAMERA_FAILED",
+        "detail": "the photo camera would not come back",
+      ])
+      return
+    }
+    photoRestoring = true
+    self.camera = camera
+    observeCamera(camera, gen: gen)
+    emit(["type": "state", "state": "starting"])
+    camera.stream.start()
+  }
+
+  private func observeVideo(_ camera: Camera, recorder: GlassesVideoRecorder, gen: Int) {
+    videoTokens.append(
+      camera.stream.videoFramePublisher.listen { frame in
+        recorder.append(video: frame)
+      })
+    videoTokens.append(
+      camera.stream.audioFramePublisher.listen { frame in
+        recorder.append(audio: frame)
+      })
+    videoTokens.append(
+      camera.stream.statePublisher.listen { [weak self] state in
+        Task { @MainActor in self?.videoStreamChanged(state, gen: gen) }
+      })
+    videoTokens.append(
+      camera.stream.errorPublisher.listen { [weak self] error in
+        let detail = error.description
+        Task { @MainActor in
+          guard let self, gen == self.generation else { return }
+          self.emit(["type": "error", "where": "video", "code": "VIDEO_ERROR", "detail": detail])
+        }
+      })
+    videoTokens.append(
+      camera.statePublisher.listen { [weak self] state in
+        Task { @MainActor in
+          guard let self, gen == self.generation, state == .stopped else { return }
+          self.videoLost()
+        }
+      })
+  }
+
+  private func videoStreamChanged(_ state: StreamState, gen: Int) {
+    guard gen == generation, videoCamera != nil else { return }
+    emit(["type": "video", "state": String(describing: state)])
+    switch state {
+    case .streaming:
+      videoLive = true
+      let waiters = videoWaiters
+      videoWaiters = []
+      for waiter in waiters { waiter.resolve(true) }
+      attachExtrasIfNeeded()
+    case .stopped:
+      videoLost()
+    default:
+      break
+    }
+  }
+
+  /// The glasses stopped streaming under a live video (taken off, too hot,
+  /// out of reach). Dart stops it with `keep`, so what was recorded is filed.
+  private func videoLost() {
+    guard videoLive, !videoLostSent, recorder != nil else { return }
+    videoLostSent = true
+    emit(["type": "video", "state": "lost"])
+  }
+
+  private func waitForVideo() async -> Bool {
+    if videoLive { return true }
+    let seconds = videoTimeoutSeconds
+    return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+      let shot = OneShot(continuation)
+      videoWaiters.append(shot)
+      Task { @MainActor in
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        shot.resolve(false)
+      }
     }
   }
 
@@ -721,6 +1018,65 @@ extension MetaWearablesDatPlugin {
       } catch {
         result(FlutterError(code: "SEND_FAILED", message: String(describing: error), details: nil))
       }
+    }
+  }
+
+  /// `captureVideoStart({path, resolution, frameRate, audio})`: starts the
+  /// glasses' video into the MP4 at `path` and answers once frames arrive.
+  /// `resolution` is `low`, `medium` or `high`; `frameRate` one the kit
+  /// streams at (2, 7, 15, 24, 30); `audio` takes the glasses' microphone.
+  func captureVideoStart(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any]
+    guard let path = args?["path"] as? String, !path.isEmpty else {
+      result(FlutterError(code: "BAD_PATH", message: "a video needs a path", details: nil))
+      return
+    }
+    let resolution: StreamingResolution
+    switch args?["resolution"] as? String {
+    case "low": resolution = .low
+    case "medium": resolution = .medium
+    default: resolution = .high
+    }
+    let asked = UInt(max(0, (args?["frameRate"] as? Int) ?? 24))
+    let frameRate = CaptureSessionController.videoFrameRates.contains(asked) ? asked : 24
+    let audio = (args?["audio"] as? Bool) ?? true
+    Task { @MainActor in
+      do {
+        let status = try await self.captureController().startVideo(
+          path: path, resolution: resolution, frameRate: frameRate, audio: audio)
+        result(status)
+      } catch let failure as CaptureFailure {
+        result(FlutterError(code: failure.code, message: failure.detail, details: nil))
+      } catch {
+        result(FlutterError(code: "CAPTURE_ERROR", message: String(describing: error), details: nil))
+      }
+    }
+  }
+
+  /// `captureVideoStop({keep})`: stops the video. With `keep` (the default)
+  /// answers the finished file's facts (`path`, `durationMs`, `frames`, …).
+  func captureVideoStop(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any]
+    let keep = (args?["keep"] as? Bool) ?? true
+    Task { @MainActor in
+      do {
+        result(try await self.captureController().stopVideo(keep: keep))
+      } catch let failure as CaptureFailure {
+        result(FlutterError(code: failure.code, message: failure.detail, details: nil))
+      } catch {
+        result(FlutterError(code: "CAPTURE_ERROR", message: String(describing: error), details: nil))
+      }
+    }
+  }
+
+  /// `captureClick({kind})`: a short sound in the glasses' speakers. `kind`
+  /// is `shutter` (one click), `start` (rising) or `stop` (falling). Answers
+  /// whether it played; it never throws.
+  func captureClick(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any]
+    let kind = (args?["kind"] as? String) ?? "shutter"
+    Task { @MainActor in
+      result(GlassesClick.shared.play(kind))
     }
   }
 
