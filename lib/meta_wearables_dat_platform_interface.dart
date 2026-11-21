@@ -239,4 +239,18 @@ abstract class MetaWearablesDatPlatform extends PlatformInterface {
   Future<bool> setDevice(String? deviceId) {
     throw UnimplementedError('setDevice() has not been implemented.');
   }
+
+  Future<bool> simulatedAvailable() async => false;
+
+  Future<String?> simulatedStart({String model = 'display'}) {
+    throw UnimplementedError('simulatedStart() has not been implemented.');
+  }
+
+  Future<bool> simulatedPress(String kind) async => false;
+
+  Future<bool> simulatedFailNextPhoto() async => false;
+
+  Future<String?> simulatedVoiceLaunch() async => null;
+
+  Future<bool> simulatedStop() async => false;
 }

@@ -870,6 +870,44 @@ class MetaWearablesDat {
     return MetaWearablesDatPlatform.instance.setDevice(deviceId);
   }
 
+  /// CONCETTO FORK (iOS, debug builds): whether this build can simulate
+  /// glasses with Meta's Mock Device Kit (it embeds MWDATMockDevice).
+  static Future<bool> simulatedAvailable() {
+    return MetaWearablesDatPlatform.instance.simulatedAvailable();
+  }
+
+  /// CONCETTO FORK (iOS, debug builds): pairs, powers on and wears simulated
+  /// glasses, [model] `display` (Meta Ray-Ban Display, whose display floats
+  /// over the app) or `camera` (Ray-Ban Meta). Answers their device id, to
+  /// pin with [setDevice].
+  static Future<String?> simulatedStart({String model = 'display'}) {
+    return MetaWearablesDatPlatform.instance.simulatedStart(model: model);
+  }
+
+  /// CONCETTO FORK (iOS, debug builds): a press on the simulated glasses:
+  /// `capture`, `capture_hold`, `capture_double`, `up`, `down`, `left`,
+  /// `right`, `select` or `back`.
+  static Future<bool> simulatedPress(String kind) {
+    return MetaWearablesDatPlatform.instance.simulatedPress(kind);
+  }
+
+  /// CONCETTO FORK (iOS, debug builds): the next photo asked of the
+  /// simulated glasses fails.
+  static Future<bool> simulatedFailNextPhoto() {
+    return MetaWearablesDatPlatform.instance.simulatedFailNextPhoto();
+  }
+
+  /// CONCETTO FORK (iOS, debug builds): "Hey Meta, start" the app, on the
+  /// simulated glasses.
+  static Future<String?> simulatedVoiceLaunch() {
+    return MetaWearablesDatPlatform.instance.simulatedVoiceLaunch();
+  }
+
+  /// CONCETTO FORK (iOS, debug builds): takes the simulated glasses off.
+  static Future<bool> simulatedStop() {
+    return MetaWearablesDatPlatform.instance.simulatedStop();
+  }
+
   /// Requests the Android runtime permissions required by the DAT SDK
   /// (Bluetooth, Internet). Returns true if all permissions are granted.
   /// No-op on iOS.

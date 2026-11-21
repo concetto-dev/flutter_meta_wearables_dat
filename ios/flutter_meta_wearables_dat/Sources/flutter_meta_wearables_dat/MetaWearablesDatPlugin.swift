@@ -298,6 +298,18 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
   let voiceEvents = VoiceEventStreamHandler()
   private var voiceControllerStorage: VoiceController?
 
+  /// CONCETTO FORK: simulated glasses (Meta's Mock Device Kit) in a debug
+  /// build that embeds it; see SimulatedGlasses.swift.
+  private var simulatedStorage: SimulatedGlasses?
+
+  @MainActor
+  func simulated() -> SimulatedGlasses {
+    if let existing = simulatedStorage { return existing }
+    let made = SimulatedGlasses()
+    simulatedStorage = made
+    return made
+  }
+
   @MainActor
   func voiceController() -> VoiceController {
     if let existing = voiceControllerStorage { return existing }
@@ -466,6 +478,32 @@ public class MetaWearablesDatPlugin: NSObject, FlutterPlugin {
         let deviceId = (call.arguments as? [String: Any])?["deviceId"] as? String
         Task { @MainActor in
           result(await self.pinDevice(deviceId))
+        }
+      // CONCETTO FORK: simulated glasses, debug builds only.
+      case "simulatedAvailable":
+        Task { @MainActor in result(self.simulated().isAvailable) }
+      case "simulatedStart":
+        let model = (call.arguments as? [String: Any])?["model"] as? String ?? "display"
+        Task { @MainActor in
+          do {
+            result(try self.simulated().start(model: model))
+          } catch let failure as SimulatedGlasses.Failure {
+            result(FlutterError(code: failure.code, message: failure.detail, details: nil))
+          } catch {
+            result(FlutterError(code: "SIMULATED_FAILED", message: String(describing: error), details: nil))
+          }
+        }
+      case "simulatedPress":
+        let kind = (call.arguments as? [String: Any])?["kind"] as? String ?? ""
+        Task { @MainActor in result(self.simulated().press(kind)) }
+      case "simulatedFailNextPhoto":
+        Task { @MainActor in result(self.simulated().failNextPhoto()) }
+      case "simulatedVoiceLaunch":
+        Task { @MainActor in result(self.simulated().voiceLaunch()) }
+      case "simulatedStop":
+        Task { @MainActor in
+          self.simulated().stop()
+          result(true)
         }
       case "getRegistrationState":
         getRegistrationState(result: result)

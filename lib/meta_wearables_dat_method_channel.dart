@@ -522,4 +522,32 @@ class MethodChannelMetaWearablesDat extends MetaWearablesDatPlatform {
         'deviceId': deviceId,
       }) ??
       false;
+
+  @override
+  Future<bool> simulatedAvailable() async =>
+      await methodChannel.invokeMethod<bool>('simulatedAvailable') ?? false;
+
+  @override
+  Future<String?> simulatedStart({String model = 'display'}) =>
+      methodChannel.invokeMethod<String>('simulatedStart', {'model': model});
+
+  @override
+  Future<bool> simulatedPress(String kind) async =>
+      await methodChannel.invokeMethod<bool>('simulatedPress', {
+        'kind': kind,
+      }) ??
+      false;
+
+  @override
+  Future<bool> simulatedFailNextPhoto() async =>
+      await methodChannel.invokeMethod<bool>('simulatedFailNextPhoto') ??
+      false;
+
+  @override
+  Future<String?> simulatedVoiceLaunch() =>
+      methodChannel.invokeMethod<String>('simulatedVoiceLaunch');
+
+  @override
+  Future<bool> simulatedStop() async =>
+      await methodChannel.invokeMethod<bool>('simulatedStop') ?? false;
 }
